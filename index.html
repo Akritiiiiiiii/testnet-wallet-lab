@@ -1,0 +1,888 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testnet wallet lab</title>
+<meta name="description" content="A hands-on lab: make an Ethereum wallet in your browser, sign a transaction, broadcast it on a test network and find it on a public block explorer. No real money.">
+<meta name="theme-color" content="#DCE6D2">
+<meta property="og:title" content="Testnet wallet lab">
+<meta property="og:description" content="Make a wallet, sign a payment, find it on a public ledger. Uses a test network with free, worthless ETH.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%BE%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Zilla+Slab:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<script>window.ethers||document.write('<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"><\/script>');</script>
+<style>
+:root{
+  --paper:#DCE6D2; --panel:#F6F9F1; --ink:#0F1B2D; --ink-soft:#3B4756;
+  --faint:rgba(15,27,45,.16); --line:rgba(15,27,45,.06);
+  --stamp:#B3261E; --mark:#F2D64B; --mark-ink:#0F1B2D;
+  --link:#1B3FA0; --ok:#1D6B3B;
+  --slab:'Zilla Slab',Rockwell,'Roboto Slab',Georgia,serif;
+  --sans:'Atkinson Hyperlegible','Segoe UI',Verdana,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1A14; --panel:#16241B; --ink:#E7F0E2; --ink-soft:#A9BAAE;
+    --faint:rgba(231,240,226,.22); --line:rgba(231,240,226,.05);
+    --stamp:#FF7A6E; --mark:#E5C63A; --mark-ink:#14200F;
+    --link:#9DB8FF; --ok:#7BD99A;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1A14; --panel:#16241B; --ink:#E7F0E2; --ink-soft:#A9BAAE;
+  --faint:rgba(231,240,226,.22); --line:rgba(231,240,226,.05);
+  --stamp:#FF7A6E; --mark:#E5C63A; --mark-ink:#14200F;
+  --link:#9DB8FF; --ok:#7BD99A;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth}
+body{
+  margin:0; color:var(--ink); background-color:var(--paper);
+  background-image:repeating-linear-gradient(to bottom,transparent 0 31px,var(--line) 31px 32px);
+  font:400 1.0625rem/1.6 var(--sans);
+}
+a{color:var(--link)}
+:focus-visible{outline:3px solid var(--link);outline-offset:2px}
+h1,h2,h3{font-family:var(--slab);margin:0}
+p{margin:0 0 1rem}
+
+/* layout */
+.shell{display:grid;grid-template-columns:15.5rem minmax(0,1fr);max-width:78rem;margin:0 auto}
+.rail{
+  position:sticky;top:0;align-self:start;height:100vh;overflow:auto;
+  padding:2rem 1.1rem 2rem 1rem;border-right:4px double var(--stamp);
+}
+.brand{font:700 1.35rem/1.1 var(--slab);margin:0 0 1.75rem}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:.2rem}
+.steps a{
+  display:flex;gap:.7rem;align-items:center;padding:.5rem .5rem .5rem .6rem;
+  color:var(--ink);text-decoration:none;border-left:4px solid transparent;
+}
+.steps a:hover{background:var(--faint)}
+.steps a[aria-current="true"]{border-left-color:var(--ink);font-weight:700;background:var(--panel)}
+.tick{
+  flex:none;width:1.6rem;height:1.6rem;display:grid;place-items:center;
+  border:2px solid var(--ink);border-radius:2px;font:700 .85rem/1 var(--slab);
+}
+.tick.done{background:var(--ok);border-color:var(--ok);color:var(--paper)}
+.netbox{margin-top:2rem;padding-top:1.25rem;border-top:2px solid var(--ink)}
+.netbox label{display:block;font-weight:700;margin-bottom:.35rem}
+.netbox .hint{margin-top:.6rem}
+main{padding:3.25rem clamp(1.25rem,4vw,3.5rem) 6rem;min-width:0}
+
+/* type */
+h1{font-size:clamp(2.6rem,6.2vw,4.75rem);line-height:.98;font-weight:700;letter-spacing:-.015em;margin-bottom:1.75rem}
+h1 span{display:block}
+.lede{max-width:40rem;font-size:1.15rem}
+.hint{font-size:.92rem;color:var(--ink-soft);max-width:44rem;margin-bottom:.75rem}
+.mono{font-family:var(--mono)}
+
+/* safety note */
+.note{
+  max-width:44rem;background:var(--mark);color:var(--mark-ink);
+  border:2px solid var(--ink);border-radius:3px;padding:1rem 1.2rem;margin:2rem 0 0;
+}
+.note p{margin:0}
+.note strong{font-family:var(--slab);font-size:1.15rem}
+
+/* entries */
+.entry{border-top:2px solid var(--ink);margin-top:4.5rem;padding-top:1.5rem;scroll-margin-top:1.5rem}
+.entry-head{display:grid;grid-template-columns:3.6rem 1fr;align-items:baseline;margin-bottom:1rem}
+.num{font:700 3rem/1 var(--slab);color:var(--ink-soft)}
+.entry h2{font-size:clamp(1.7rem,3.4vw,2.2rem);line-height:1.1}
+.entry h3{font-size:1.2rem;margin-bottom:.35rem}
+
+/* panels and controls */
+.panel{
+  background:var(--panel);border:2px solid var(--ink);border-radius:3px;
+  padding:1.3rem 1.4rem;margin:1.5rem 0;position:relative;
+}
+.panel.dashed{border-style:dashed}
+.btn{
+  font:700 1rem/1.2 var(--sans);padding:.75rem 1.15rem;min-height:44px;
+  border:2px solid var(--ink);background:var(--ink);color:var(--paper);border-radius:3px;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;
+}
+.btn:hover{background:var(--ink-soft);border-color:var(--ink-soft)}
+.btn.quiet{background:transparent;color:var(--ink)}
+.btn.quiet:hover{background:var(--faint)}
+.btn.sm{min-height:36px;padding:.35rem .75rem;font-size:.9rem}
+.btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
+.actions{display:flex;flex-wrap:wrap;gap:.75rem 1.25rem;align-items:center;margin-top:1rem}
+.row{display:flex;flex-wrap:wrap;gap:.5rem;margin:.6rem 0 0}
+.check{display:flex;gap:.55rem;align-items:flex-start;cursor:pointer}
+.check input{width:1.2rem;height:1.2rem;margin-top:.2rem;accent-color:var(--ink)}
+.field label{display:block;font-weight:700;margin-bottom:.3rem}
+input[type=text],input[type=number],select,textarea{
+  width:100%;font:400 1rem/1.4 var(--sans);color:var(--ink);background:var(--panel);
+  border:2px solid var(--ink);border-radius:3px;padding:.55rem .65rem;min-height:44px;
+}
+input.mono,textarea.mono{font:400 .9rem/1.4 var(--mono)}
+input[readonly]{background:var(--paper);color:var(--ink-soft)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem 1.25rem}
+.wide{grid-column:1/-1}
+.err{color:var(--stamp);font-weight:700;min-height:1.4em;margin:.75rem 0 0}
+
+/* data blocks */
+.data{
+  font:400 .875rem/1.5 var(--mono);background:var(--paper);border-left:4px solid var(--ink);
+  padding:.6rem .8rem;word-break:break-all;margin:.4rem 0;
+}
+.bigaddr{font:500 clamp(1rem,2.6vw,1.35rem)/1.3 var(--mono);word-break:break-all;margin:0 0 .5rem}
+.placeholder{color:var(--ink-soft)}
+.kc-item{padding:.2rem 0}
+.kc-via{
+  margin:.6rem 0 .6rem 1rem;padding:.35rem 0 .35rem 1rem;border-left:3px solid var(--ink);
+  font-style:italic;color:var(--ink-soft);font-size:.95rem;
+}
+.words{display:grid;grid-template-columns:repeat(auto-fill,minmax(7.5rem,1fr));gap:.4rem;margin-top:.4rem}
+.words span{font:400 .875rem/1.3 var(--mono);background:var(--paper);border:1.5px solid var(--faint);padding:.3rem .5rem}
+.checkline{font-size:.92rem;color:var(--ink-soft);margin:.4rem 0 0}
+.checkline b{color:var(--ok)}
+
+/* faucet list */
+.faucets{list-style:none;margin:0;padding:0;display:grid;gap:.6rem}
+.faucets li{display:grid;grid-template-columns:minmax(0,13rem) 1fr;gap:.25rem 1rem;padding-top:.6rem;border-top:1.5px solid var(--faint)}
+.faucets li:first-child{border-top:0;padding-top:0}
+.faucets a{font-weight:700}
+.faucets span{color:var(--ink-soft);font-size:.95rem}
+
+/* key-value */
+.kv{display:grid;grid-template-columns:11rem minmax(0,1fr);gap:.45rem 1rem;margin:0}
+.kv dt{font-weight:700}
+.kv dd{margin:0;font:400 .85rem/1.5 var(--mono);word-break:break-all}
+
+/* stamp: the one loud thing */
+.stamp{
+  position:absolute;top:-1.15rem;right:1.4rem;padding:.15rem .9rem;
+  border:3px double var(--stamp);color:var(--stamp);border-radius:4px;
+  font:700 1.7rem/1.2 var(--slab);letter-spacing:.08em;text-transform:uppercase;
+  transform:rotate(-7deg);background:var(--paper);opacity:.95;pointer-events:none;
+}
+.stamp.hit{animation:stampIn .3s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes stampIn{from{transform:rotate(-7deg) scale(1.9);opacity:0}to{transform:rotate(-7deg) scale(1);opacity:.95}}
+@media (prefers-reduced-motion:reduce){.stamp.hit{animation:none}html{scroll-behavior:auto}}
+
+/* procedure list */
+.proc{margin:1rem 0;padding-left:1.4rem;max-width:44rem}
+.proc li{margin-bottom:.6rem;padding-left:.3rem}
+details{border-top:1.5px solid var(--faint);padding:.7rem 0}
+details:last-of-type{border-bottom:1.5px solid var(--faint)}
+summary{cursor:pointer;font-weight:700}
+details p{margin:.6rem 0 0;max-width:42rem}
+
+/* field guide */
+.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem;margin:1.5rem 0}
+.split .panel{margin:0}
+.split dl{margin:0}
+.split dt{font-weight:700;margin-top:.8rem}
+.split dt:first-of-type{margin-top:0}
+.split dd{margin:0;color:var(--ink-soft);font-size:.95rem}
+
+/* ledger blocks */
+.blocks{display:grid;grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr));gap:1rem;margin:1.5rem 0}
+.block{background:var(--panel);border:2px solid var(--ink);border-radius:3px;padding:1rem 1.1rem}
+.block label{display:block;font-weight:700;font-size:.92rem;margin:.5rem 0 .25rem}
+.fp{margin:.8rem 0 0}
+.fp dt{font-size:.85rem;color:var(--ink-soft)}
+.fp dd{margin:0 0 .5rem;font:500 .9rem/1.4 var(--mono);word-break:break-all}
+.fp dd.changed{color:var(--stamp);font-weight:500;text-decoration:underline wavy;text-underline-offset:3px}
+.flag{font:700 .8rem/1 var(--sans);color:var(--stamp);margin-left:.35rem}
+.verdict{margin:0}
+.verdict .cmp{display:grid;grid-template-columns:12rem minmax(0,1fr);gap:.3rem 1rem;margin-bottom:.9rem}
+.verdict .cmp b{font-weight:700}
+.verdict .cmp code{font:500 .9rem/1.4 var(--mono)}
+
+.foot{margin-top:5rem;padding-top:1.25rem;border-top:2px solid var(--ink);color:var(--ink-soft);font-size:.92rem}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:56rem){
+  .shell{display:block}
+  .rail{
+    position:sticky;top:0;z-index:5;height:auto;overflow:visible;border-right:0;
+    border-bottom:4px double var(--stamp);padding:.6rem .75rem;background:var(--paper);
+  }
+  .brand{display:none}
+  .steps{display:flex;overflow-x:auto;gap:.15rem}
+  .steps a{white-space:nowrap;border-left:0;border-bottom:4px solid transparent;padding:.4rem .55rem}
+  .steps a[aria-current="true"]{border-bottom-color:var(--ink);background:transparent}
+  .netbox{margin-top:.5rem;padding-top:.5rem;display:flex;gap:.6rem;align-items:center}
+  .netbox label{margin:0}
+  .netbox select{max-width:12rem}
+  .netbox .hint{display:none}
+  main{padding-top:2rem}
+  .entry{scroll-margin-top:7rem}
+}
+@media (max-width:40rem){
+  .grid2,.split{grid-template-columns:minmax(0,1fr)}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .kv dd{margin-bottom:.5rem}
+  .faucets li{grid-template-columns:minmax(0,1fr)}
+  .verdict .cmp{grid-template-columns:minmax(0,1fr)}
+  .entry-head{grid-template-columns:2.6rem 1fr}
+  .num{font-size:2.3rem}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="rail" aria-label="Lab steps">
+  <p class="brand">Testnet wallet lab</p>
+  <ol class="steps" id="steps">
+    <li><a href="#s1" data-step="1"><span class="tick">1</span><span>Make a wallet</span></a></li>
+    <li><a href="#s2" data-step="2"><span class="tick">2</span><span>Get test ETH</span></a></li>
+    <li><a href="#s3" data-step="3"><span class="tick">3</span><span>Sign a payment</span></a></li>
+    <li><a href="#s4" data-step="4"><span class="tick">4</span><span>Broadcast and find it</span></a></li>
+    <li><a href="#s5" data-step="5"><span class="tick">5</span><span>Try to edit a ledger</span></a></li>
+    <li><a href="#s6" data-step="6"><span class="tick">6</span><span>Check yourself</span></a></li>
+  </ol>
+  <div class="netbox">
+    <label for="net">Network</label>
+    <select id="net">
+      <option value="sepolia">Sepolia</option>
+      <option value="hoodi">Hoodi (backup)</option>
+    </select>
+    <p class="hint" id="netHint"></p>
+  </div>
+</nav>
+
+<main>
+<header>
+  <h1><span>Make a wallet.</span><span>Sign a payment.</span><span>Find it on a public ledger.</span></h1>
+  <p class="lede">This lab uses an Ethereum test network, where ETH is free and worth nothing. The wallet is built in your browser. The ledger you check at the end is public and lives outside this page, so anyone can look at your transaction.</p>
+  <div class="note">
+    <p><strong>Testnet only.</strong> The key you make here stays in this page and is never sent anywhere. Even so, keep the habit: never paste a private key or recovery phrase from a wallet that holds real money into any web page.</p>
+  </div>
+  <p class="sr" id="live" aria-live="polite"></p>
+</header>
+
+<!-- 1 -->
+<section class="entry" id="s1" aria-labelledby="h-s1">
+  <div class="entry-head"><span class="num" aria-hidden="true">1</span><h2 id="h-s1">Make a wallet</h2></div>
+  <p class="lede">A wallet isn't a container. It's a secret number plus the math that turns it into a public address. Coins never sit inside it. The ledger records what each address owns, and only the secret number can spend it.</p>
+
+  <div class="panel">
+    <div id="walletEmpty">
+      <p class="bigaddr placeholder">0x…</p>
+      <p class="hint">Your address will appear here.</p>
+    </div>
+
+    <div id="walletFull" hidden>
+      <div class="kc-item">
+        <h3>Private key</h3>
+        <p class="hint">A random 256-bit number. Whoever holds it controls the address.</p>
+        <div class="data" id="pk"></div>
+        <div id="wordsWrap">
+          <p class="hint" style="margin-top:.8rem">The same key written as 12 words. Import these into MetaMask and you get this same address as the first account.</p>
+          <div class="words" id="words"></div>
+        </div>
+        <div class="row">
+          <button class="btn quiet sm" id="btnReveal" aria-pressed="false">Show secrets</button>
+          <button class="btn quiet sm" data-copy="pk">Copy key</button>
+          <button class="btn quiet sm" data-copy="words" id="btnCopyWords">Copy words</button>
+        </div>
+      </div>
+
+      <div class="kc-via">Curve math on secp256k1. Easy to compute forwards, infeasible to reverse.</div>
+
+      <div class="kc-item">
+        <h3>Public key</h3>
+        <p class="hint">Safe to share, but nobody does. It's only an intermediate step.</p>
+        <div class="data" id="pub"></div>
+        <div class="row"><button class="btn quiet sm" data-copy="pub">Copy public key</button></div>
+      </div>
+
+      <div class="kc-via">Hash it with keccak-256 and keep the last 20 bytes.</div>
+
+      <div class="kc-item">
+        <h3>Address</h3>
+        <p class="hint">This is what you give people. It's your account number on the ledger.</p>
+        <p class="bigaddr" id="addr"></p>
+        <div class="row"><button class="btn quiet sm" data-copy="addr">Copy address</button></div>
+        <p class="checkline" id="addrCheck"></p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="btnMake">Generate a wallet</button>
+      <label class="check"><input type="checkbox" id="remember"><span>Keep this wallet in this browser so a refresh doesn't lose it</span></label>
+    </div>
+    <p class="hint" style="margin-top:.75rem">Keeping it stores the 12-word phrase in this browser's local storage. Fine for a classroom testnet wallet, wrong for anything with real value.</p>
+    <p class="err" id="libErr" role="alert"></p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="entry" id="s2" aria-labelledby="h-s2">
+  <div class="entry-head"><span class="num" aria-hidden="true">2</span><h2 id="h-s2">Get test ETH</h2></div>
+  <p class="lede">A faucet is a website that gives test ETH to any address you paste in. That works because addresses are public: anyone can send to one without asking its owner.</p>
+
+  <div class="panel">
+    <p class="bigaddr" id="addr2"></p>
+    <div class="row">
+      <button class="btn quiet sm" data-copy="addr">Copy address</button>
+      <a class="btn quiet sm" id="addrLink" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Open address on explorer</a>
+    </div>
+  </div>
+
+  <p>Copy your address, pick a faucet, paste it in, and wait a minute or two. Faucets change often, and most limit you to one request a day. If one asks for a real balance or payment, close it and try another.</p>
+  <div class="panel">
+    <ul class="faucets" id="faucets"></ul>
+  </div>
+  <p>Then open your address on the explorer. Your balance shows up there, not on this page, because this page has no connection to the network. The ledger lives somewhere else.</p>
+  <p class="hint" id="netNote"></p>
+  <label class="check"><input type="checkbox" id="funded"><span>My balance shows on the explorer</span></label>
+</section>
+
+<!-- 3 -->
+<section class="entry" id="s3" aria-labelledby="h-s3">
+  <div class="entry-head"><span class="num" aria-hidden="true">3</span><h2 id="h-s3">Sign a payment</h2></div>
+  <p class="lede">A transaction is a short instruction: send this much to that address. Your signature proves the instruction came from your key, and changing any part of a signed transaction breaks it. Signing happens here in your browser, without touching the network.</p>
+
+  <div class="panel">
+    <div class="grid2">
+      <div class="field wide">
+        <label for="to">Send to</label>
+        <input id="to" type="text" class="mono" value="0x000000000000000000000000000000000000dead" spellcheck="false" autocomplete="off">
+        <p class="hint" style="margin-top:.4rem">Any address works. The default is a well-known dead address, so the coins are gone for good, which is fine for test coins. Use a classmate's address if you'd like to see it arrive.</p>
+      </div>
+      <div class="field">
+        <label for="amount">Amount (ETH)</label>
+        <input id="amount" type="text" inputmode="decimal" value="0.001" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="nonce">Nonce</label>
+        <input id="nonce" type="number" min="0" step="1" value="0">
+        <p class="hint" style="margin-top:.4rem">How many transactions this address has sent so far. A new wallet starts at 0.</p>
+      </div>
+      <div class="field">
+        <label for="maxFee">Max fee per gas (gwei)</label>
+        <input id="maxFee" type="text" inputmode="decimal" value="20" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="tip">Priority fee (gwei)</label>
+        <input id="tip" type="text" inputmode="decimal" value="1.5" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="gas">Gas limit</label>
+        <input id="gas" type="text" value="21000" readonly>
+        <p class="hint" style="margin-top:.4rem">A plain ETH transfer always uses exactly 21,000 units of gas.</p>
+      </div>
+      <div class="field">
+        <label for="chain">Chain ID</label>
+        <input id="chain" type="text" readonly>
+        <p class="hint" style="margin-top:.4rem">Signed into the transaction, so it can't be replayed on another network.</p>
+      </div>
+    </div>
+    <p class="hint" id="costLine" style="margin-top:1rem"></p>
+    <div class="actions"><button class="btn" id="btnSign">Sign transaction</button></div>
+    <p class="err" id="signErr" role="alert"></p>
+  </div>
+
+  <div class="panel" id="signedPanel" hidden style="padding-top:2rem">
+    <div class="stamp" id="stamp" aria-hidden="true">Signed</div>
+    <h3>Signed transaction</h3>
+    <p class="hint">These bytes are everything the network needs. Anyone holding them can broadcast the payment, but nobody can change it.</p>
+    <div class="data" id="rawTx"></div>
+    <div class="row"><button class="btn quiet sm" data-copy="raw">Copy signed transaction</button></div>
+
+    <h3 style="margin-top:1.4rem">Transaction hash</h3>
+    <p class="hint">The keccak-256 of those bytes. You know it before the network does, and it's how everyone will refer to this payment.</p>
+    <div class="data" id="txHash"></div>
+    <div class="row"><button class="btn quiet sm" data-copy="hash">Copy hash</button></div>
+
+    <h3 style="margin-top:1.4rem">Who sent it?</h3>
+    <p class="hint">The transaction has no "from" field. The network works out the sender from the signature alone.</p>
+    <div class="data" id="recovered"></div>
+    <p class="checkline"><b id="recoveredOk"></b></p>
+
+    <h3 style="margin-top:1.4rem">What's inside</h3>
+    <dl class="kv" id="txFields"></dl>
+  </div>
+  <p class="hint">Try this: change the amount by a single digit and sign again. The whole hash changes, not just a bit of it.</p>
+</section>
+
+<!-- 4 -->
+<section class="entry" id="s4" aria-labelledby="h-s4">
+  <div class="entry-head"><span class="num" aria-hidden="true">4</span><h2 id="h-s4">Broadcast and find it</h2></div>
+  <p class="lede">Signing sends nothing. To make the payment real, hand the signed bytes to any node on the network. Etherscan has a form for exactly that. The node passes it along, and a block proposer includes it in the next block.</p>
+
+  <ol class="proc">
+    <li>Copy the signed transaction from step 3.</li>
+    <li>Open <a id="pushLink" href="#" target="_blank" rel="noopener noreferrer">the broadcast page</a>, paste it in, and press the broadcast button.</li>
+    <li>Paste your hash below and open it on the explorer.</li>
+  </ol>
+
+  <div class="panel">
+    <div class="field">
+      <label for="hashIn">Transaction hash</label>
+      <input id="hashIn" type="text" class="mono" placeholder="0x…" spellcheck="false" autocomplete="off">
+      <p class="hint" id="hashMsg" style="margin-top:.4rem"></p>
+    </div>
+    <div class="actions">
+      <a class="btn" id="txLink" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">Open transaction on explorer</a>
+      <label class="check"><input type="checkbox" id="found"><span>I can see my transaction on the explorer</span></label>
+    </div>
+  </div>
+
+  <details>
+    <summary>The explorer says something is wrong</summary>
+    <p><b>"Insufficient funds"</b>: the faucet ETH hasn't arrived yet, or the amount plus the maximum fee is more than your balance. Check the address page, or lower the amount.</p>
+    <p><b>"Nonce too low"</b>: your wallet already sent a transaction with that nonce. Raise the nonce by one and sign again.</p>
+    <p><b>Max fee below the base fee</b>: raise the max fee per gas and sign again.</p>
+    <p><b>"Transaction hash not found"</b>: normal for the first minute. The node hasn't shared it widely yet. Refresh.</p>
+    <p><b>Pending for a long time</b>: the fees are probably too low for a busy moment. Sign again with the same nonce and higher fees; only one of the two can ever be included.</p>
+  </details>
+
+  <h3 style="margin-top:2rem;font-size:1.5rem">Reading the explorer page</h3>
+  <p>Every line on the transaction page is either something you chose in step 3 or something the network added when it put your payment in a block. Labels differ a little between explorers.</p>
+  <div class="split">
+    <div class="panel">
+      <h3>You chose these</h3>
+      <dl>
+        <dt>From</dt><dd>Recovered from your signature.</dd>
+        <dt>To</dt><dd>The address you typed.</dd>
+        <dt>Value</dt><dd>The amount, stored as whole units of wei (1 ETH is 10<sup>18</sup> wei).</dd>
+        <dt>Nonce</dt><dd>Your count of earlier transactions.</dd>
+        <dt>Gas limit</dt><dd>The most gas you allowed. 21,000 for a plain transfer.</dd>
+        <dt>Max fee and priority fee</dt><dd>The most you'd pay per unit of gas, and the tip you offered.</dd>
+      </dl>
+    </div>
+    <div class="panel dashed">
+      <h3>The network filled these in</h3>
+      <dl>
+        <dt>Status</dt><dd>Pending, then Success once it's in a block.</dd>
+        <dt>Block</dt><dd>Which block holds it. Click through to see its neighbours.</dd>
+        <dt>Timestamp</dt><dd>When that block was made.</dd>
+        <dt>Gas used</dt><dd>What the transfer actually consumed.</dd>
+        <dt>Gas price paid</dt><dd>The block's base fee plus your tip, at most your max fee.</dd>
+        <dt>Transaction fee</dt><dd>Gas used times the price paid. Usually less than the maximum you allowed.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h3 style="font-size:1.5rem">Lab record</h3>
+  <p>Fill in what you see on the explorer, then copy the record to hand in. It never includes your private key.</p>
+  <div class="panel">
+    <div class="grid2">
+      <div class="field"><label for="rName">Your name</label><input id="rName" type="text" autocomplete="name"></div>
+      <div class="field"><label for="rBlock">Block number on the explorer</label><input id="rBlock" type="text" inputmode="numeric"></div>
+      <div class="field">
+        <label for="rStatus">Status on the explorer</label>
+        <select id="rStatus"><option>Success</option><option>Pending</option><option>Failed</option></select>
+      </div>
+    </div>
+    <div class="field" style="margin-top:1rem">
+      <label for="recordText">Record</label>
+      <textarea id="recordText" class="mono" rows="11" readonly></textarea>
+    </div>
+    <div class="actions"><button class="btn" data-copy="record">Copy lab record</button></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="entry" id="s5" aria-labelledby="h-s5">
+  <div class="entry-head"><span class="num" aria-hidden="true">5</span><h2 id="h-s5">Try to edit a ledger</h2></div>
+  <p class="lede">Why trust a ledger nobody owns? Each block carries a fingerprint (a hash) of the block before it, and thousands of nodes keep their own copies. Edit the contents of any block below and watch what happens.</p>
+
+  <div class="blocks" id="blocks"></div>
+  <div class="panel verdict" id="verdict" aria-live="polite"></div>
+  <div class="actions" style="margin-top:0"><button class="btn quiet" id="btnResetBlocks">Restore original blocks</button></div>
+  <p class="hint" style="margin-top:1rem">Real Ethereum blocks fingerprint a header that commits to their transactions, not raw text like this. The effect is the same: one edit ripples through every later block.</p>
+</section>
+
+<!-- 6 -->
+<section class="entry" id="s6" aria-labelledby="h-s6">
+  <div class="entry-head"><span class="num" aria-hidden="true">6</span><h2 id="h-s6">Check yourself</h2></div>
+  <p class="lede">Answer each one in your head, then open it.</p>
+  <div id="qa">
+    <details>
+      <summary>You lose your private key but still know your address. Can you get your coins back?</summary>
+      <p>No. The address can't be turned back into the key, and no company holds a copy. The ledger still shows the balance, but nobody can sign a payment to move it.</p>
+    </details>
+    <details>
+      <summary>Why is the chain ID part of what you sign?</summary>
+      <p>So the signature only works on one network. Without it, someone could take your signed testnet payment and replay it on mainnet, where it might move real money.</p>
+    </details>
+    <details>
+      <summary>Anyone can read your address's full history. What does that mean for privacy?</summary>
+      <p>Addresses are pseudonymous, not anonymous. Once an address is linked to you (through an exchange account, a name service, or a payment to a friend), its whole past and future activity is linked too.</p>
+    </details>
+    <details>
+      <summary>What does the nonce protect against?</summary>
+      <p>It orders your transactions and makes each one unique. The network accepts nonce 0, then 1, then 2, so the same signed payment can't be executed twice.</p>
+    </details>
+    <details>
+      <summary>The faucet gave you coins without asking who you are. What stops people draining it?</summary>
+      <p>Limits on requests per address, per network location, or per account, plus the fact that test coins have no value worth hoarding. Some faucets make you spend computing power to earn them.</p>
+    </details>
+  </div>
+</section>
+
+<footer class="foot">
+  <p>Keys and signatures are made with ethers.js 5.7.2 using your browser's secure random number generator. Nothing typed on this page is sent to a server. Test networks are retired on a schedule, so expect the network menu to change over time.</p>
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+'use strict';
+var NETS = {
+  sepolia:{
+    name:'Sepolia', chainId:11155111, explorer:'https://sepolia.etherscan.io',
+    faucets:[
+      {name:'Alchemy faucet', url:'https://www.alchemy.com/faucets/ethereum-sepolia', note:'Quick, but may ask you to sign in. Up to 0.1 ETH a day.'},
+      {name:'Chainlink faucet', url:'https://faucets.chain.link/sepolia', note:'Asks you to sign in or connect a wallet.'},
+      {name:'Infura faucet', url:'https://www.infura.io/faucet/sepolia', note:'Usually needs a free Infura account.'},
+      {name:'PoW faucet', url:'https://sepolia-faucet.pk910.de', note:'No account. Your browser does a few minutes of proof-of-work to earn the ETH, which shows why real coins are scarce.'}
+    ],
+    hint:'Sepolia is reportedly due to be retired around the end of September 2026. If a faucet or the explorer stops working, switch to Hoodi.',
+    note:'Sepolia is reportedly due to be retired around the end of September 2026. If a faucet or the explorer fails, choose Hoodi in the Network menu and repeat this step.'
+  },
+  hoodi:{
+    name:'Hoodi', chainId:560048, explorer:'https://hoodi.etherscan.io',
+    faucets:[
+      {name:'ethPandaOps faucet', url:'https://hoodi.ethpandaops.io', note:'Run by a team at the Ethereum Foundation.'},
+      {name:'PoW faucet', url:'https://hoodi-faucet.pk910.de', note:'No account. Your browser does proof-of-work to earn the ETH.'}
+    ],
+    hint:'Hoodi is mainly used for validator testing, but ordinary transfers work the same way.',
+    note:'If a link here doesn\'t load, search for "Hoodi faucet". Faucet addresses change often.'
+  }
+};
+var KEY='twl-state-v1';
+var state={phrase:null,remember:false,funded:false,found:false,net:'sepolia',name:'',block:'',status:'Success'};
+try{var raw=localStorage.getItem(KEY); if(raw){Object.assign(state,JSON.parse(raw));}}catch(e){}
+function save(){try{var s=Object.assign({},state); if(!s.remember){s.phrase=null;} localStorage.setItem(KEY,JSON.stringify(s));}catch(e){}}
+
+function $(id){return document.getElementById(id);}
+var wallet=null, signed=null, showSecrets=false, edited=false, hashAuto=true, qaOpened={}, armTimer=null;
+function net(){return NETS[state.net]||NETS.sepolia;}
+function say(t){$('live').textContent=''; setTimeout(function(){$('live').textContent=t;},20);}
+
+/* ---------- clipboard ---------- */
+var COPY={
+  pk:function(){return wallet&&wallet.privateKey;},
+  pub:function(){return wallet&&wallet.publicKey;},
+  addr:function(){return wallet&&wallet.address;},
+  words:function(){return wallet&&wallet.mnemonic&&wallet.mnemonic.phrase;},
+  raw:function(){return signed&&signed.raw;},
+  hash:function(){return signed&&signed.hash;},
+  record:function(){return $('recordText').value;}
+};
+function copyText(text){
+  return new Promise(function(resolve){
+    function fallback(){
+      try{
+        var ta=document.createElement('textarea'); ta.value=text; ta.setAttribute('readonly','');
+        ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select();
+        var ok=document.execCommand('copy'); document.body.removeChild(ta); resolve(ok);
+      }catch(e){resolve(false);}
+    }
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){resolve(true);},fallback);
+    }else{fallback();}
+  });
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-copy]'); if(!b) return;
+  var get=COPY[b.getAttribute('data-copy')]; var text=get&&get();
+  var orig=b.getAttribute('data-label')||b.textContent; b.setAttribute('data-label',orig);
+  if(!text){b.textContent='Nothing to copy yet'; setTimeout(function(){b.textContent=orig;},1600); return;}
+  copyText(text).then(function(ok){
+    b.textContent=ok?'Copied':'Copy blocked: select it by hand';
+    say(ok?'Copied to clipboard':'Copy was blocked by the browser');
+    setTimeout(function(){b.textContent=orig;},1600);
+  });
+});
+
+/* ---------- wallet ---------- */
+function libOk(){
+  if(window.ethers) return true;
+  $('libErr').textContent='The signing library did not load. Check your connection and reload the page.';
+  return false;
+}
+function setWallet(w){
+  wallet=w; signed=null; hashAuto=true;
+  if(state.remember&&w.mnemonic){state.phrase=w.mnemonic.phrase;}
+  save(); renderAll();
+}
+function disarm(){
+  var b=$('btnMake'); delete b.dataset.armed; clearTimeout(armTimer);
+  b.textContent=wallet?'Make a different wallet':'Generate a wallet';
+}
+$('btnMake').addEventListener('click',function(){
+  if(!libOk()) return;
+  var b=$('btnMake');
+  if(wallet && !b.dataset.armed){
+    b.dataset.armed='1'; b.textContent='Click again to discard this wallet';
+    armTimer=setTimeout(disarm,4000); return;
+  }
+  disarm(); showSecrets=false;
+  setWallet(ethers.Wallet.createRandom());
+  say('Wallet created');
+});
+$('remember').addEventListener('change',function(e){
+  state.remember=e.target.checked;
+  if(state.remember&&wallet&&wallet.mnemonic){state.phrase=wallet.mnemonic.phrase;}
+  save();
+});
+$('btnReveal').addEventListener('click',function(){showSecrets=!showSecrets; renderWallet();});
+
+function renderWallet(){
+  var has=!!wallet;
+  $('walletEmpty').hidden=has; $('walletFull').hidden=!has;
+  $('btnMake').textContent=has?'Make a different wallet':'Generate a wallet';
+  $('remember').checked=!!state.remember;
+  if(!has) return;
+  $('pk').textContent=showSecrets?wallet.privateKey:'0x'+new Array(65).join('\u2022');
+  $('pub').textContent=wallet.publicKey;
+  $('addr').textContent=wallet.address;
+  var btn=$('btnReveal'); btn.textContent=showSecrets?'Hide secrets':'Show secrets'; btn.setAttribute('aria-pressed',String(showSecrets));
+  var hasWords=!!(wallet.mnemonic&&wallet.mnemonic.phrase);
+  $('wordsWrap').hidden=!hasWords; $('btnCopyWords').hidden=!hasWords;
+  if(hasWords){
+    var host=$('words'); host.innerHTML='';
+    wallet.mnemonic.phrase.split(' ').forEach(function(w,i){
+      var s=document.createElement('span'); s.textContent=(i+1)+'. '+(showSecrets?w:'\u2022\u2022\u2022\u2022\u2022'); host.appendChild(s);
+    });
+  }
+  var h=ethers.utils.keccak256('0x'+wallet.publicKey.slice(4)); var tail='0x'+h.slice(-40);
+  var ok=tail.toLowerCase()===wallet.address.toLowerCase();
+  $('addrCheck').innerHTML=ok?'<b>Checked here:</b> the last 20 bytes of keccak-256 of the public key are '+tail+', which is your address.':'Address check failed. Generate a new wallet.';
+}
+
+/* ---------- network + step 2 ---------- */
+function renderNet(){
+  var n=net();
+  $('net').value=state.net; $('netHint').textContent=n.hint; $('netNote').textContent=n.note;
+  $('chain').value=n.chainId+' ('+n.name+')';
+  $('pushLink').href=n.explorer+'/pushTx';
+  $('faucets').innerHTML=n.faucets.map(function(f){
+    return '<li><a href="'+f.url+'" target="_blank" rel="noopener noreferrer">'+f.name+'</a><span>'+f.note+'</span></li>';
+  }).join('');
+}
+function setLink(a,href){
+  if(href){a.href=href; a.removeAttribute('aria-disabled');}
+  else{a.href='#'; a.setAttribute('aria-disabled','true');}
+}
+function renderAddress(){
+  $('addr2').textContent=wallet?wallet.address:'Make a wallet in step 1 first.';
+  $('addr2').classList.toggle('placeholder',!wallet);
+  setLink($('addrLink'),wallet?net().explorer+'/address/'+wallet.address:null);
+}
+$('net').addEventListener('change',function(e){
+  state.net=e.target.value; save();
+  var had=!!signed; signed=null; hashAuto=true;
+  renderAll();
+  if(had){$('signErr').textContent='Network changed. The chain ID is part of the signature, so sign the transaction again.';}
+});
+$('funded').addEventListener('change',function(e){state.funded=e.target.checked; save(); updateProgress();});
+$('found').addEventListener('change',function(e){state.found=e.target.checked; save(); updateProgress();});
+
+/* ---------- step 3: sign ---------- */
+function readForm(){
+  var to;
+  try{to=ethers.utils.getAddress($('to').value.trim());}
+  catch(e){throw new Error('That isn\'t a valid address. It should be 0x followed by 40 hex characters, and mixed capitals must match the checksum.');}
+  var value;
+  try{value=ethers.utils.parseEther($('amount').value.trim()||'0');}
+  catch(e){throw new Error('Amount must be a plain number such as 0.001.');}
+  if(value.lte(0)) throw new Error('Enter an amount greater than 0.');
+  var nonce=Number($('nonce').value);
+  if(!isFinite(nonce)||nonce<0||Math.floor(nonce)!==nonce||$('nonce').value==='') throw new Error('Nonce must be a whole number, 0 or higher.');
+  var maxFee,tip;
+  try{maxFee=ethers.utils.parseUnits($('maxFee').value.trim(),'gwei');}catch(e){throw new Error('Max fee must be a number in gwei, such as 20.');}
+  try{tip=ethers.utils.parseUnits($('tip').value.trim(),'gwei');}catch(e){throw new Error('Priority fee must be a number in gwei, such as 1.5.');}
+  if(maxFee.lte(0)) throw new Error('Max fee must be greater than 0.');
+  if(tip.gt(maxFee)) throw new Error('The priority fee can\'t be higher than the max fee.');
+  return {to:to,value:value,nonce:nonce,maxFee:maxFee,tip:tip};
+}
+function renderCost(){
+  if(!window.ethers) return;
+  try{
+    var f=readForm(); var total=f.value.add(f.maxFee.mul(21000));
+    $('costLine').textContent='Your wallet needs at least '+ethers.utils.formatEther(total)+' ETH for this to be accepted: the amount plus the most the fee could be. You only pay the actual fee.';
+  }catch(e){$('costLine').textContent='';}
+}
+['to','amount','nonce','maxFee','tip'].forEach(function(id){$(id).addEventListener('input',renderCost);});
+
+$('btnSign').addEventListener('click',function(){
+  var err=$('signErr'); err.textContent='';
+  if(!libOk()) return;
+  if(!wallet){err.textContent='Make a wallet in step 1 first.'; return;}
+  var f;
+  try{f=readForm();}catch(e){err.textContent=e.message; return;}
+  wallet.signTransaction({
+    type:2, chainId:net().chainId, to:f.to, value:f.value, nonce:f.nonce,
+    gasLimit:21000, maxFeePerGas:f.maxFee, maxPriorityFeePerGas:f.tip
+  }).then(function(rawTx){
+    var parsed=ethers.utils.parseTransaction(rawTx);
+    signed={raw:rawTx,hash:ethers.utils.keccak256(rawTx),parsed:parsed};
+    if(hashAuto||!$('hashIn').value){$('hashIn').value=signed.hash; hashAuto=true;}
+    renderSigned(); renderHash(); updateRecord(); updateProgress();
+    var s=$('stamp'); s.classList.remove('hit'); void s.offsetWidth; s.classList.add('hit');
+    say('Transaction signed');
+  }).catch(function(e){err.textContent='Signing failed: '+(e.reason||e.message||'unknown error');});
+});
+
+function renderSigned(){
+  var p=$('signedPanel');
+  if(!signed){p.hidden=true; return;}
+  p.hidden=false;
+  var t=signed.parsed, U=ethers.utils;
+  var rows=[
+    ['Type','2 (the EIP-1559 format)'],
+    ['Chain ID',String(t.chainId)+' ('+net().name+')'],
+    ['Nonce',String(t.nonce)],
+    ['To',t.to],
+    ['Value',U.formatEther(t.value)+' ETH ('+t.value.toString()+' wei)'],
+    ['Gas limit',t.gasLimit.toString()],
+    ['Max fee per gas',U.formatUnits(t.maxFeePerGas,'gwei')+' gwei'],
+    ['Priority fee',U.formatUnits(t.maxPriorityFeePerGas,'gwei')+' gwei'],
+    ['Signature r',t.r],['Signature s',t.s],['Signature v',String(t.v)]
+  ];
+  $('txFields').innerHTML=rows.map(function(r){return '<dt>'+r[0]+'</dt><dd>'+r[1]+'</dd>';}).join('');
+  $('rawTx').textContent=signed.raw; $('txHash').textContent=signed.hash;
+  $('recovered').textContent=t.from;
+  $('recoveredOk').textContent=t.from.toLowerCase()===wallet.address.toLowerCase()?'Matches your wallet address.':'Does not match your wallet address.';
+}
+
+/* ---------- step 4: hash + record ---------- */
+var HASH_RE=/^0x[0-9a-fA-F]{64}$/;
+function currentHash(){var v=$('hashIn').value.trim(); return HASH_RE.test(v)?v:null;}
+function renderHash(){
+  var v=$('hashIn').value.trim(), ok=HASH_RE.test(v);
+  setLink($('txLink'),ok?net().explorer+'/tx/'+v:null);
+  $('hashMsg').textContent=!v?'Sign a transaction in step 3 and its hash appears here, or paste one from another wallet.':(ok?'':'A transaction hash is 0x followed by 64 hex characters.');
+}
+$('hashIn').addEventListener('input',function(){hashAuto=false; renderHash(); updateRecord();});
+$('txLink').addEventListener('click',function(){ if(this.getAttribute('aria-disabled')==='true'){return;} });
+
+function updateRecord(){
+  state.name=$('rName').value; state.block=$('rBlock').value; state.status=$('rStatus').value; save();
+  var h=currentHash(), n=net(), t=signed&&signed.parsed;
+  var L=[
+    'Testnet wallet lab record',
+    'Name: '+(state.name||'(not given)'),
+    'Network: '+n.name+' (chain ID '+n.chainId+')',
+    'My address: '+(wallet?wallet.address:'(no wallet yet)'),
+    'Transaction hash: '+(h||'(not yet)'),
+    'Explorer link: '+(h?n.explorer+'/tx/'+h:'(not yet)'),
+    'To: '+(t?t.to:'(not signed yet)'),
+    'Value: '+(t?ethers.utils.formatEther(t.value)+' ETH':'(not signed yet)'),
+    'Nonce: '+(t?t.nonce:'(not signed yet)'),
+    'Block (from explorer): '+(state.block||'(not filled in)'),
+    'Status (from explorer): '+state.status
+  ];
+  $('recordText').value=L.join('\n');
+}
+['rName','rBlock','rStatus'].forEach(function(id){$(id).addEventListener('input',updateRecord);$(id).addEventListener('change',updateRecord);});
+
+/* ---------- step 5: ledger ---------- */
+var BLOCK_TEXT=[
+  'Start: Priya has 10, Marcus has 5, Jonas has 0',
+  'Priya pays Marcus 2',
+  'Marcus pays Jonas 1.5',
+  'Jonas pays Priya 0.5'
+];
+var ZERO='0x'+new Array(65).join('0');
+var blockText=BLOCK_TEXT.slice(), original=null;
+function chainOf(texts){
+  var prev=ZERO;
+  return texts.map(function(t,i){var h=ethers.utils.id((i+1)+'|'+prev+'|'+t); var o={prev:prev,hash:h}; prev=h; return o;});
+}
+function short(h){return h.slice(0,10)+'\u2026'+h.slice(-4);}
+function buildBlocks(){
+  if(!window.ethers) return;
+  original=chainOf(BLOCK_TEXT);
+  var host=$('blocks'); host.innerHTML='';
+  BLOCK_TEXT.forEach(function(t,i){
+    var d=document.createElement('div'); d.className='block';
+    d.innerHTML='<h3>Block '+(i+1)+'</h3><label for="bt'+i+'">Contents</label><input id="bt'+i+'" type="text" maxlength="90">'+
+      '<dl class="fp"><dt>Previous block\'s fingerprint</dt><dd id="bp'+i+'"></dd><dt>This block\'s fingerprint</dt><dd id="bh'+i+'"></dd></dl>';
+    host.appendChild(d);
+    var inp=d.querySelector('input'); inp.value=t;
+    inp.addEventListener('input',function(){blockText[i]=inp.value; renderBlocks();});
+  });
+  renderBlocks();
+}
+function renderBlocks(){
+  if(!original) return;
+  var now=chainOf(blockText), changedAny=false;
+  now.forEach(function(b,i){
+    var pc=b.prev!==original[i].prev, hc=b.hash!==original[i].hash;
+    if(hc) changedAny=true;
+    var p=$('bp'+i), h=$('bh'+i);
+    p.textContent=i===0?'none, this is the first block':short(b.prev);
+    p.className=pc?'changed':'';
+    h.textContent=short(b.hash); h.className=hc?'changed':'';
+    if(hc){var f=document.createElement('span'); f.className='flag'; f.textContent='changed'; h.appendChild(f);}
+  });
+  var last=now.length-1, same=now[last].hash===original[last].hash;
+  $('verdict').innerHTML=
+    '<div class="cmp"><b>Network\'s latest fingerprint</b><code>'+short(original[last].hash)+'</code>'+
+    '<b>Your copy\'s latest fingerprint</b><code>'+short(now[last].hash)+'</code></div>'+
+    (same?'<p style="margin:0">Your copy matches the network. Edit any block above to see what a change does.</p>'
+         :'<p style="margin:0">Your copy no longer matches the network. Every fingerprint from the edited block onward changed, and every other node would reject your version. To make it stick you\'d have to redo all the later blocks and outrun everyone still adding new ones.</p>');
+  if(changedAny&&!edited){edited=true; updateProgress();}
+}
+$('btnResetBlocks').addEventListener('click',function(){
+  blockText=BLOCK_TEXT.slice();
+  BLOCK_TEXT.forEach(function(t,i){$('bt'+i).value=t;});
+  renderBlocks();
+});
+
+/* ---------- step 6 ---------- */
+Array.prototype.forEach.call(document.querySelectorAll('#qa details'),function(d,i){
+  d.addEventListener('toggle',function(){ if(d.open){qaOpened[i]=true; updateProgress();} });
+});
+
+/* ---------- progress + scroll spy ---------- */
+function updateProgress(){
+  var done={1:!!wallet,2:!!state.funded,3:!!signed,4:!!state.found,5:edited,6:Object.keys(qaOpened).length>=5};
+  Array.prototype.forEach.call(document.querySelectorAll('#steps a'),function(a){
+    var n=a.getAttribute('data-step'), t=a.querySelector('.tick'), d=done[n];
+    t.classList.toggle('done',d); t.textContent=d?'\u2713':n;
+    a.setAttribute('title',d?'Done':'');
+  });
+}
+if('IntersectionObserver' in window){
+  var links={};
+  Array.prototype.forEach.call(document.querySelectorAll('#steps a'),function(a){links[a.getAttribute('href').slice(1)]=a;});
+  var io=new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        Object.keys(links).forEach(function(k){links[k].removeAttribute('aria-current');});
+        links[en.target.id].setAttribute('aria-current','true');
+      }
+    });
+  },{rootMargin:'-20% 0px -65% 0px'});
+  Object.keys(links).forEach(function(k){io.observe($(k));});
+}
+
+/* ---------- boot ---------- */
+function renderAll(){
+  renderNet(); renderWallet(); renderAddress(); renderSigned(); renderHash(); updateRecord(); renderCost(); updateProgress();
+}
+$('funded').checked=!!state.funded; $('found').checked=!!state.found;
+$('rName').value=state.name||''; $('rBlock').value=state.block||''; $('rStatus').value=state.status||'Success';
+if(!NETS[state.net]) state.net='sepolia';
+if(window.ethers){
+  if(state.remember&&state.phrase){
+    try{wallet=ethers.Wallet.fromMnemonic(state.phrase);}catch(e){wallet=null;}
+  }
+  buildBlocks();
+}else{libOk();}
+renderAll();
+})();
+</script>
+</body>
+</html>
